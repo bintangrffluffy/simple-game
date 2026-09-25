@@ -1,0 +1,538 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400..900;1,400..900&family=Poppins:ital,wght@0,500..800&display=swap");
+@import "tailwindcss";
+
+/* GameShell's desktop card framing only on screens tall enough for it — a
+   phone held sideways is wider than `sm` but has no height to spare. */
+@custom-variant framed (@media (min-width: 40rem) and (min-height: 32rem));
+@custom-variant short (@media (max-height: 31.99rem));
+
+@theme {
+  --font-poppins: "Poppins", sans-serif;
+  --font-sans: "Nunito", sans-serif;
+
+  /* Fluffy brand tokens (mirrors production design system) */
+  --color-fluffy-bg: #ffffff;
+  --color-fluffy-text: #4b5563;
+  --color-fluffy-subtext: #6b7280;
+  --color-fluffy-border: #e5e7eb;
+  --color-fluffy-primary: #0477b6;
+  --color-fluffy-hover: #035f90;
+  --color-fluffy-cream: #eaf4fb;
+  --color-fluffy-blush: #d6e9f8;
+  --color-fluffy-peach: #a9d2f2;
+  --color-fluffy-gold: #d9a85b;
+  --color-fluffy-success: #60bb8f;
+  --color-fluffy-warning: #fed23a;
+  --color-fluffy-danger: #d7261e;
+  --color-fluffy-brown: #69361f;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-fluffy-cream);
+    color: var(--color-fluffy-text);
+    overflow-x: clip;
+    max-width: 100vw;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-poppins);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full px-6 py-2.5 text-center text-sm font-bold transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-fluffy-primary hover:bg-fluffy-hover text-fluffy-bg shadow-sm;
+  }
+
+  .btn-outline {
+    @apply border-fluffy-border hover:border-fluffy-primary hover:text-fluffy-primary bg-fluffy-bg text-fluffy-text border-2;
+  }
+
+  .btn-secondary {
+    @apply bg-fluffy-cream text-fluffy-primary hover:bg-fluffy-blush;
+  }
+
+  .btn-icon {
+    @apply text-fluffy-subtext hover:bg-fluffy-cream hover:text-fluffy-text inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .fluffy-card {
+    @apply bg-fluffy-bg ring-fluffy-border relative overflow-hidden rounded-2xl ring-1 transition-all duration-300 ease-out;
+  }
+}
+
+/* Games must never let a drag/tap scroll the page or trigger pull-to-refresh */
+.touch-none-game {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Confetti (GameResult) */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10%) rotate(var(--rotate));
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(420px) rotate(calc(var(--rotate) + 360deg));
+    opacity: 0;
+  }
+}
+.confetti-piece {
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+/* Memory Match card flip */
+.memory-card {
+  perspective: 1000px;
+  aspect-ratio: 3 / 4;
+  min-height: 44px;
+}
+.memory-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.4s;
+  transform-style: preserve-3d;
+}
+.memory-card[data-flipped="true"] .memory-card-inner {
+  transform: rotateY(180deg);
+}
+.memory-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.memory-card-back {
+  background: var(--color-fluffy-blush);
+}
+.memory-card-front {
+  transform: rotateY(180deg);
+}
+
+/* Tile Match mismatch feedback */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+/* Bubble Pop float-up */
+@keyframes bubble-float {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(-1 * var(--rise)));
+    opacity: 0;
+  }
+}
+.bubble-pop-item {
+  animation-name: bubble-float;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  touch-action: manipulation;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The global 0.001ms rule would jump bubbles straight to their invisible
+     end state; show them static instead (placed at a random height in JS). */
+  .bubble-pop-item {
+    animation: none !important;
+  }
+}
+
+/* Whack-a-Mole hit feedback */
+@keyframes whack-squash {
+  0% {
+    transform: scale(1, 1);
+  }
+  14% {
+    transform: scale(1.28, 0.58);
+  }
+  32% {
+    transform: scale(0.9, 1.12);
+  }
+  50% {
+    transform: scale(1.06, 0.95);
+  }
+  70%,
+  100% {
+    transform: scale(1, 1);
+  }
+}
+@keyframes whack-mallet {
+  0% {
+    transform: rotate(55deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  35% {
+    transform: rotate(-12deg);
+  }
+  50% {
+    transform: rotate(-4deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-4deg);
+    opacity: 0;
+  }
+}
+@keyframes whack-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.1) rotate(12deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.35) rotate(20deg);
+    opacity: 0;
+  }
+}
+@keyframes whack-float {
+  0% {
+    transform: translate(-50%, 0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -8px) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -34px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes whack-star {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg) scale(0.7);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-4px) rotate(180deg) scale(1.1);
+    opacity: 1;
+  }
+}
+@keyframes whack-hole-bump {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(0.94);
+  }
+  55% {
+    transform: scale(1.03);
+  }
+}
+@keyframes whack-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-5px);
+  }
+  40%,
+  80% {
+    transform: translateX(5px);
+  }
+}
+.whack-shake {
+  animation: whack-shake 380ms ease-in-out;
+}
+.whack-squash {
+  transform-origin: 50% 100%;
+  animation: whack-squash 420ms ease-out both;
+}
+.whack-mallet {
+  transform-origin: 85% 90%;
+  animation: whack-mallet 480ms ease-out both;
+}
+.whack-burst {
+  animation: whack-burst 420ms ease-out both;
+}
+.whack-float {
+  animation: whack-float 700ms ease-out both;
+}
+.whack-star {
+  animation: whack-star 520ms ease-in-out infinite;
+}
+.whack-hole-bump {
+  animation: whack-hole-bump 260ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the hit feedback visible (static dizzy face, burst, +points) for
+     the JS-driven hit window instead of letting it collapse instantly. */
+  .whack-squash,
+  .whack-star,
+  .whack-hole-bump {
+    animation: none !important;
+  }
+  .whack-mallet,
+  .whack-burst,
+  .whack-float {
+    animation: none !important;
+  }
+  .whack-burst {
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+  }
+  .whack-float {
+    transform: translate(-50%, -12px);
+  }
+  .whack-mallet {
+    transform: rotate(-4deg);
+  }
+}
+
+/* Target Tap: targets shrink over their lifetime (duration set inline) */
+@keyframes target-shrink {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  8% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(var(--shrink-to));
+    opacity: 1;
+  }
+}
+.target-tap-item {
+  animation-name: target-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  touch-action: manipulation;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep targets at full size instead of snapping to the shrunken end state. */
+  .target-tap-item {
+    animation: none !important;
+  }
+}
+
+/* Find the Item */
+@keyframes find-item-found {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+@keyframes find-item-hint {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-12deg) scale(1.12);
+  }
+  75% {
+    transform: rotate(12deg) scale(1.12);
+  }
+}
+@keyframes find-item-banner {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.find-item-found {
+  animation: find-item-found 420ms ease-out forwards;
+}
+.find-item-hint {
+  animation: find-item-hint 900ms ease-in-out infinite;
+  filter: drop-shadow(0 0 6px var(--color-fluffy-warning)) drop-shadow(0 0 2px var(--color-fluffy-gold));
+}
+.find-item-banner {
+  animation: find-item-banner 320ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Found items stay faintly visible and the hint keeps its glow, so the
+     feedback survives without the motion. */
+  .find-item-found {
+    animation: none !important;
+    opacity: 0.25;
+  }
+  .find-item-hint {
+    animation: none !important;
+  }
+}
+
+/* Fluffy Flap: season / time-of-day label */
+@keyframes flap-scene-chip {
+  0% {
+    transform: translate(-50%, -6px);
+    opacity: 0;
+  }
+  12%,
+  78% {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, 0);
+    opacity: 0;
+  }
+}
+.flap-scene-chip {
+  transform: translateX(-50%);
+  animation: flap-scene-chip 2.6s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the label readable instead of letting it vanish instantly. */
+  .flap-scene-chip {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* Achievement unlocked toast (GamePage) */
+@keyframes achievement-toast {
+  0% {
+    transform: translateY(-16px) scale(0.95);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.achievement-toast {
+  animation: achievement-toast 320ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Show the card straight away instead of snapping from invisible. */
+  .achievement-toast {
+    animation: none !important;
+  }
+}
+
+/* Fluffy Blocks: cleared cells pop and fade */
+@keyframes blocks-clear {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+.blocks-clear {
+  animation: blocks-clear 340ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the cleared cells briefly visible (removed from JS after 360ms). */
+  .blocks-clear {
+    animation: none !important;
+    opacity: 0.6;
+  }
+}
+
+/* Tidy Together: item drops into its basket */
+@keyframes tidy-done {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.3) translateY(40px);
+    opacity: 0;
+  }
+}
+.tidy-done {
+  animation: tidy-done 420ms ease-in forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Fade only, so the "it went in" feedback stays without the motion. */
+  .tidy-done {
+    animation: none !important;
+    opacity: 0.3;
+  }
+}
+
+/* Fluffy Volley: "turn your device sideways" prompt */
+@keyframes volley-rotate {
+  0%,
+  25% {
+    transform: rotate(0deg);
+  }
+  55%,
+  85% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+.volley-rotate-hint {
+  animation: volley-rotate 2.4s ease-in-out infinite;
+}
