@@ -10,6 +10,9 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  build: {
+    target: "es2021",
+  },
   server: {
     port: 5001,
   },
