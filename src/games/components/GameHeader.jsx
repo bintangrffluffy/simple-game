@@ -5,7 +5,7 @@ export default function GameHeader({ title, score, scoreLabel = "Score", best, t
   return (
     <div className="border-fluffy-border flex items-center justify-between gap-3 border-b px-4 py-3 short:py-1 sm:px-6">
       <div className="flex items-center gap-2">
-        <Link to="/games" aria-label="Back to Fluffy Play" className="btn-icon -ml-2">
+        <Link to="/" aria-label="Back to Fluffy Play" className="btn-icon -ml-2">
           <ArrowLeft size={20} />
         </Link>
         <h1 className="font-poppins text-fluffy-text text-base font-bold sm:text-lg">{title}</h1>

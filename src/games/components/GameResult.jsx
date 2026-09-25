@@ -66,7 +66,7 @@ export default function GameResult({
             <RotateCcw size={16} /> Play Again
           </button>
           <ShareButton text={text} url={url} />
-          <Link to="/games" className="btn btn-outline w-full">
+          <Link to="/" className="btn btn-outline w-full">
             <ArrowLeft size={16} /> Back to Games
           </Link>
         </div>

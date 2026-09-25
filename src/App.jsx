@@ -6,6 +6,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<GameHub />} />
+      <Route path="/games" element={<Navigate to="/" replace />} />
       <Route path="/games/:gameId" element={<GamePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
