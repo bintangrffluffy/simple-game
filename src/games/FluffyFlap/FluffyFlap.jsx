@@ -1,13 +1,13 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import GameShell from "@/games/components/GameShell";
 import GameResult from "@/games/components/GameResult";
 import { useKaboomStage } from "@/games/hooks/useKaboomStage";
+import { useTallStage } from "@/games/hooks/useTallStage";
 import { useGameTimer } from "@/games/hooks/useGameTimer";
 import { useHighScore } from "@/games/hooks/useHighScore";
 import { useGameResult } from "@/games/hooks/useGameResult";
@@ -19,7 +19,7 @@ import { addFluffy } from "@/games/characters/fluffyCharacter";
 import { createScenery } from "./flapScenery";
 
 const STAGE_WIDTH = 380;
-// Width is fixed; the height stretches to the device (see fitStage), never
+// Width is fixed; the height stretches to the device (useTallStage), never
 // below the original 560 and capped so very tall screens stay playable.
 const BASE_HEIGHT = 560;
 const MAX_HEIGHT = 900;
@@ -43,20 +43,6 @@ const TREAT_POINTS = 2;
 const TREAT_SIZE = 30;
 // How long the bonk stays on screen before the result card.
 const DEATH_REVEAL = 0.7;
-
-// Logical stage size for the measured game area: as tall as the area allows
-// at a fixed 380 width (wide screens keep the 380×560 shape, full height).
-function fitStage({ width, height }) {
-  const displayWidth = Math.min(width, (height * STAGE_WIDTH) / BASE_HEIGHT);
-  const logical = Math.round((STAGE_WIDTH * height) / displayWidth);
-  const stageHeight = Math.min(MAX_HEIGHT, Math.max(BASE_HEIGHT, logical));
-  const displayScale = Math.min(width / STAGE_WIDTH, height / stageHeight);
-  const dpr = window.devicePixelRatio || 1;
-  return {
-    height: stageHeight,
-    pixelDensity: Math.min(3, Math.max(1, dpr * displayScale)),
-  };
-}
 
 const GATE_COLORS = ["#a9d2f2", "#f4c7d3", "#cfe8a6", "#ffe1a8"];
 
@@ -123,39 +109,14 @@ export default function FluffyFlap({ onGameComplete }) {
     setScore(scoreRef.current);
   };
 
-  // The stage fills the game area's height. Its logical height (and pixel
-  // density) is only re-picked on the idle screen: changing it remounts
-  // Kaboom, which must never happen mid-run. While playing, a resize just
-  // rescales the frozen stage to fit.
-  const areaRef = useRef(null);
-  const [area, setArea] = useState(null);
-  const [stage, setStage] = useState(null);
-  useLayoutEffect(() => {
-    const el = areaRef.current;
-    if (!el) return undefined;
-    const measure = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0)
-        setArea({ width: rect.width, height: rect.height });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  useLayoutEffect(() => {
-    if (!area || status !== "idle") return;
-    const next = fitStage(area);
-    // Ignore small jitter (e.g. a phone's address bar sliding in/out).
-    setStage((cur) =>
-      cur && Math.abs(cur.height - next.height) < 16 ? cur : next,
-    );
-  }, [area, status]);
-  const stageHeight = stage?.height;
-  const scale =
-    area && stage
-      ? Math.min(area.width / STAGE_WIDTH, area.height / stage.height)
-      : 0;
+  // Full-height stage; frozen during a run (a new height remounts Kaboom).
+  const { areaRef, height: stageHeight, pixelDensity, boxStyle } =
+    useTallStage({
+      width: STAGE_WIDTH,
+      baseHeight: BASE_HEIGHT,
+      maxHeight: MAX_HEIGHT,
+      canResize: status === "idle",
+    });
 
   // setup() runs once per Kaboom mount, so everything it needs from React
   // goes through the refs above.
@@ -443,7 +404,7 @@ export default function FluffyFlap({ onGameComplete }) {
     height: stageHeight,
     background: "#eaf4fb",
     setup,
-    pixelDensity: stage?.pixelDensity,
+    pixelDensity,
   });
 
   // Pause the Kaboom loop whenever we're not actively playing (idle preview,
@@ -517,10 +478,7 @@ export default function FluffyFlap({ onGameComplete }) {
       >
         <div
           className="relative overflow-hidden framed:rounded-2xl"
-          style={{
-            width: STAGE_WIDTH * scale,
-            height: (stageHeight ?? BASE_HEIGHT) * scale,
-          }}
+          style={boxStyle}
         >
           <div ref={containerRef} className="absolute inset-0" />
 

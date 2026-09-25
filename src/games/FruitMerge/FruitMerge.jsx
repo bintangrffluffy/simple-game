@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import GameShell from "@/games/components/GameShell";
 import GameResult from "@/games/components/GameResult";
 import { useKaboomStage } from "@/games/hooks/useKaboomStage";
+import { useTallStage } from "@/games/hooks/useTallStage";
 import { useGameTimer } from "@/games/hooks/useGameTimer";
 import { useHighScore } from "@/games/hooks/useHighScore";
 import { useGameResult } from "@/games/hooks/useGameResult";
@@ -170,7 +171,18 @@ export default function FruitMerge({ onGameComplete }) {
   const handleNextTierRef = useRef(handleNextTierChange);
   handleNextTierRef.current = handleNextTierChange;
 
+  // The box keeps its 320×460 shape (its height is gameplay: how much room
+  // the stack has) and is just scaled up to fill the screen.
+  const { areaRef, height: stageHeight, pixelDensity, boxStyle } = useTallStage({
+    width: STAGE_WIDTH,
+    baseHeight: STAGE_HEIGHT,
+    canResize: status === "idle",
+  });
+
   const setup = useCallback((k) => {
+    // Kaboom pins the canvas to W×H CSS px; let it follow the fitted box.
+    k.canvas.style.width = "100%";
+    k.canvas.style.height = "100%";
     loadFruitCanvases()
       .then((canvases) => {
         // useKaboomStage detaches the canvas synchronously on unmount
@@ -481,9 +493,11 @@ export default function FruitMerge({ onGameComplete }) {
 
   const { containerRef, kRef } = useKaboomStage({
     width: STAGE_WIDTH,
-    height: STAGE_HEIGHT,
+    // Undefined until measured, so Kaboom mounts once, at the right density.
+    height: stageHeight,
     background: "#eaf4fb",
     setup,
+    pixelDensity,
   });
 
   useEffect(() => {
@@ -535,8 +549,8 @@ export default function FruitMerge({ onGameComplete }) {
         ) : null
       }
     >
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
-        <div className="relative aspect-[16/23] w-full max-w-[320px] overflow-hidden rounded-2xl">
+      <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
+        <div className="relative overflow-hidden framed:rounded-2xl" style={boxStyle}>
           <div ref={containerRef} className="absolute inset-0" />
 
           {status === "playing" && (

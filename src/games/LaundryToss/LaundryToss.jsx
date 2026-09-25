@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import GameShell from "@/games/components/GameShell";
 import GameResult from "@/games/components/GameResult";
 import { useKaboomStage } from "@/games/hooks/useKaboomStage";
+import { useTallStage } from "@/games/hooks/useTallStage";
 import { useGameTimer } from "@/games/hooks/useGameTimer";
 import { useHighScore } from "@/games/hooks/useHighScore";
 import { useGameResult } from "@/games/hooks/useGameResult";
@@ -10,7 +11,10 @@ import { formatTime } from "@/games/utils/format";
 import { gameAssets, loadAssetCanvases } from "@/games/assets/gameAssets";
 
 const STAGE_WIDTH = 380;
-const STAGE_HEIGHT = 560;
+// Width is fixed; the height stretches to the device (useTallStage), never
+// below 560 and capped so very tall screens stay playable.
+const BASE_HEIGHT = 560;
+const MAX_HEIGHT = 900;
 const ROUND_SECONDS = 60;
 const GRAVITY = 1500;
 const SPAWN = { x: STAGE_WIDTH / 2, y: 470 };
@@ -73,7 +77,20 @@ export default function LaundryToss({ onGameComplete }) {
     setWind(nextWind);
   };
 
+  // Full-height stage; frozen during a run (a new height remounts Kaboom).
+  const { areaRef, height: stageHeight, pixelDensity, boxStyle } = useTallStage({
+    width: STAGE_WIDTH,
+    baseHeight: BASE_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    canResize: status === "idle",
+  });
+
   const setup = useCallback((k) => {
+    // Kaboom pins the canvas to W×H CSS px; let it follow the fitted box.
+    k.canvas.style.width = "100%";
+    k.canvas.style.height = "100%";
+    // A remount (new stage height) must wait for its own scene.
+    setAssetsReady(false);
     loadAssetCanvases([...gameAssets.products, gameAssets.decorative.basket], { crop: true, size: 160 })
       .then((canvases) => {
         if (!k.canvas.isConnected) return;
@@ -89,6 +106,13 @@ export default function LaundryToss({ onGameComplete }) {
       return k.sprite(id, { width: width * scale, height: height * scale });
     }
 
+    // Extra height (a tall phone) goes above the scene as more wall, so the
+    // throw — spawn to basket — stays exactly the same distance.
+    const dy = stageHeight - BASE_HEIGHT;
+    const spawn = { x: SPAWN.x, y: SPAWN.y + dy };
+    const holdZone = { ...HOLD_ZONE, minY: HOLD_ZONE.minY + dy, maxY: HOLD_ZONE.maxY + dy };
+    const basketY = BASKET_Y + dy;
+
     function buildScene(canvases) {
       k.setGravity(GRAVITY);
       const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -98,22 +122,22 @@ export default function LaundryToss({ onGameComplete }) {
         k.z(-100),
         {
           draw() {
-            k.drawRect({ pos: k.vec2(0, 0), width: STAGE_WIDTH, height: STAGE_HEIGHT, color: k.rgb("#eaf4fb") });
-            k.drawRect({ pos: k.vec2(0, 330), width: STAGE_WIDTH, height: STAGE_HEIGHT - 330, color: k.rgb("#fdf6ec") });
-            k.drawRect({ pos: k.vec2(0, 326), width: STAGE_WIDTH, height: 6, color: k.rgb("#d6e9f8") });
-            k.drawRect({ pos: k.vec2(26, 40), width: 90, height: 70, radius: 10, color: k.rgb("#ffffff") });
-            k.drawRect({ pos: k.vec2(32, 46), width: 78, height: 58, radius: 6, color: k.rgb("#cfe6f7") });
-            k.drawEllipse({ pos: k.vec2(SPAWN.x, 505), radiusX: 70, radiusY: 12, color: k.rgb("#d6e9f8"), opacity: 0.8 });
+            k.drawRect({ pos: k.vec2(0, 0), width: STAGE_WIDTH, height: stageHeight, color: k.rgb("#eaf4fb") });
+            k.drawRect({ pos: k.vec2(0, 330 + dy), width: STAGE_WIDTH, height: stageHeight - 330 - dy, color: k.rgb("#fdf6ec") });
+            k.drawRect({ pos: k.vec2(0, 326 + dy), width: STAGE_WIDTH, height: 6, color: k.rgb("#d6e9f8") });
+            k.drawRect({ pos: k.vec2(26, 40 + dy), width: 90, height: 70, radius: 10, color: k.rgb("#ffffff") });
+            k.drawRect({ pos: k.vec2(32, 46 + dy), width: 78, height: 58, radius: 6, color: k.rgb("#cfe6f7") });
+            k.drawEllipse({ pos: k.vec2(spawn.x, 505 + dy), radiusX: 70, radiusY: 12, color: k.rgb("#d6e9f8"), opacity: 0.8 });
           },
         },
       ]);
 
-      const basket = k.add([k.pos(STAGE_WIDTH / 2, BASKET_Y), spriteFor("basket", canvases, BASKET_SIZE), k.anchor("center"), k.z(5)]);
+      const basket = k.add([k.pos(STAGE_WIDTH / 2, basketY), spriteFor("basket", canvases, BASKET_SIZE), k.anchor("center"), k.z(5)]);
       k.add([
         k.z(1),
         {
           draw() {
-            k.drawEllipse({ pos: k.vec2(basket.pos.x, BASKET_Y + BASKET_SIZE * 0.42), radiusX: 46, radiusY: 8, color: k.rgb("#4b5563"), opacity: 0.12 });
+            k.drawEllipse({ pos: k.vec2(basket.pos.x, basketY + BASKET_SIZE * 0.42), radiusX: 46, radiusY: 8, color: k.rgb("#4b5563"), opacity: 0.12 });
           },
         },
       ]);
@@ -121,7 +145,7 @@ export default function LaundryToss({ onGameComplete }) {
       // One recycled laundry item (never destroyed mid-update — see
       // CLAUDE.md's Kaboom note). gravityScale 0 = held / waiting.
       const item = k.add([
-        k.pos(SPAWN.x, SPAWN.y),
+        k.pos(spawn.x, spawn.y),
         spriteFor(gameAssets.products[0].id, canvases, ITEM_SIZE),
         k.anchor("center"),
         k.area(),
@@ -134,7 +158,7 @@ export default function LaundryToss({ onGameComplete }) {
       ]);
 
       // mode: ready (waiting / held) -> flying -> done (scored or missed)
-      const state = { mode: "ready", time: 0, baskets: 0, streak: 0, wind: 0, prevY: SPAWN.y, spin: 0 };
+      const state = { mode: "ready", time: 0, baskets: 0, streak: 0, wind: 0, prevY: spawn.y, spin: 0 };
 
       function popup(text, pos, hex) {
         k.add([k.pos(pos), k.text(text, { size: 22 }), k.color(k.rgb(hex)), k.anchor("center"), k.opacity(1), k.lifespan(0.7, { fade: 0.4 }), k.z(30), "popup"]);
@@ -146,7 +170,7 @@ export default function LaundryToss({ onGameComplete }) {
       function nextItem() {
         const product = gameAssets.products[k.randi(gameAssets.products.length)];
         item.use(spriteFor(product.id, canvases, ITEM_SIZE));
-        item.pos = k.vec2(SPAWN.x, SPAWN.y);
+        item.pos = k.vec2(spawn.x, spawn.y);
         item.vel = k.vec2(0, 0);
         item.gravityScale = 0;
         item.angle = 0;
@@ -169,12 +193,12 @@ export default function LaundryToss({ onGameComplete }) {
           stats.baskets = state.baskets;
           stats.bestStreak = Math.max(stats.bestStreak, state.streak);
           onScoreRef.current(points, state.wind);
-          popup(`+${points}`, k.vec2(basket.pos.x, BASKET_Y - 60), "#60bb8f");
+          popup(`+${points}`, k.vec2(basket.pos.x, basketY - 60), "#60bb8f");
           item.opacity = 0;
           navigator.vibrate?.(15);
         } else {
           state.streak = 0;
-          popup("Miss", k.vec2(k.clamp(item.pos.x, 40, STAGE_WIDTH - 40), 300), "#6b7280");
+          popup("Miss", k.vec2(k.clamp(item.pos.x, 40, STAGE_WIDTH - 40), 300 + dy), "#6b7280");
         }
         k.wait(0.45, nextItem);
       }
@@ -193,7 +217,7 @@ export default function LaundryToss({ onGameComplete }) {
         item.vel.x += state.wind * dt;
         item.angle += state.spin * dt;
         // Fake depth: the item shrinks as it flies "away" toward the basket.
-        const depth = k.clamp((SPAWN.y - item.pos.y) / (SPAWN.y - BASKET_Y), 0, 1);
+        const depth = k.clamp((spawn.y - item.pos.y) / (spawn.y - basketY), 0, 1);
         item.scale = k.vec2(1 - depth * 0.35);
         // Past the top of the arc it drops behind the basket's front.
         if (item.vel.y > 0) item.z = 4;
@@ -201,27 +225,27 @@ export default function LaundryToss({ onGameComplete }) {
         const rimY = basket.pos.y + RIM_OFFSET;
         const crossedRim = state.prevY < rimY && item.pos.y >= rimY && item.vel.y > 0;
         if (crossedRim && Math.abs(item.pos.x - basket.pos.x) < RIM_HALF) settle(true);
-        else if (item.pos.y > STAGE_HEIGHT + 60 || item.pos.x < -80 || item.pos.x > STAGE_WIDTH + 80) settle(false);
+        else if (item.pos.y > stageHeight + 60 || item.pos.x < -80 || item.pos.x > STAGE_WIDTH + 80) settle(false);
         state.prevY = item.pos.y;
       });
 
       const toStage = (point) => {
         const rect = k.canvas.getBoundingClientRect();
-        return k.vec2(((point.x - rect.left) * STAGE_WIDTH) / rect.width, ((point.y - rect.top) * STAGE_HEIGHT) / rect.height);
+        return k.vec2(((point.x - rect.left) * STAGE_WIDTH) / rect.width, ((point.y - rect.top) * stageHeight) / rect.height);
       };
 
       apiRef.current = {
         canHold: () => state.mode === "ready",
         hold(point) {
           const p = toStage(point);
-          item.pos = k.vec2(k.clamp(p.x, HOLD_ZONE.minX, HOLD_ZONE.maxX), k.clamp(p.y, HOLD_ZONE.minY, HOLD_ZONE.maxY));
+          item.pos = k.vec2(k.clamp(p.x, holdZone.minX, holdZone.maxX), k.clamp(p.y, holdZone.minY, holdZone.maxY));
         },
         // velocity in client px/s -> stage px/s
         release(velocity) {
           const rect = k.canvas.getBoundingClientRect();
-          let v = k.vec2((velocity.x * STAGE_WIDTH) / rect.width, (velocity.y * STAGE_HEIGHT) / rect.height).scale(FLICK_GAIN);
+          let v = k.vec2((velocity.x * STAGE_WIDTH) / rect.width, (velocity.y * stageHeight) / rect.height).scale(FLICK_GAIN);
           if (v.y > -MIN_UP_SPEED) {
-            item.pos = k.vec2(SPAWN.x, SPAWN.y);
+            item.pos = k.vec2(spawn.x, spawn.y);
             return false;
           }
           if (v.len() > MAX_LAUNCH) v = v.unit().scale(MAX_LAUNCH);
@@ -240,9 +264,15 @@ export default function LaundryToss({ onGameComplete }) {
         },
       };
     }
-  }, []);
+  }, [stageHeight]);
 
-  const { containerRef, kRef } = useKaboomStage({ width: STAGE_WIDTH, height: STAGE_HEIGHT, background: "#eaf4fb", setup });
+  const { containerRef, kRef } = useKaboomStage({
+    width: STAGE_WIDTH,
+    height: stageHeight,
+    background: "#eaf4fb",
+    setup,
+    pixelDensity,
+  });
 
   useEffect(() => {
     if (kRef.current) kRef.current.debug.paused = status !== "playing";
@@ -329,8 +359,8 @@ export default function LaundryToss({ onGameComplete }) {
         ) : null
       }
     >
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
-        <div className="relative aspect-[19/28] w-full max-w-[380px] overflow-hidden rounded-2xl">
+      <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
+        <div className="relative overflow-hidden framed:rounded-2xl" style={boxStyle}>
           <div ref={containerRef} className="touch-none-game absolute inset-0" {...pointer} />
 
           {windLabel && status === "playing" && (

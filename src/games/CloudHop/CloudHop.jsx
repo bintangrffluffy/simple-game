@@ -3,6 +3,7 @@ import GameShell from "@/games/components/GameShell";
 import GameResult from "@/games/components/GameResult";
 import DailyModeButton from "@/games/components/DailyModeButton";
 import { useKaboomStage } from "@/games/hooks/useKaboomStage";
+import { useTallStage } from "@/games/hooks/useTallStage";
 import { useHighScore } from "@/games/hooks/useHighScore";
 import { useGameResult } from "@/games/hooks/useGameResult";
 import { usePointerInput } from "@/games/hooks/usePointerInput";
@@ -11,14 +12,19 @@ import { gameAssets, loadAssetCanvases } from "@/games/assets/gameAssets";
 import { addFluffy, FLUFFY_RADIUS } from "@/games/characters/fluffyCharacter";
 
 const STAGE_WIDTH = 380;
-const STAGE_HEIGHT = 560;
+// Width is fixed; the height stretches to the device (useTallStage), never
+// below 560 and capped so very tall screens stay playable.
+const BASE_HEIGHT = 560;
+const MAX_HEIGHT = 900;
 const GRAVITY = 1300;
 // Jump height = JUMP² / (2·GRAVITY) ≈ 222px, comfortably above the widest gap.
 const JUMP_FORCE = 760;
 const SPRING_BOOST = 1.45;
 const R = FLUFFY_RADIUS;
 const MOVE_SPEED = 620; // px/s the Fluffy slides toward the finger
-const SCROLL_LINE = 230; // the world scrolls once the Fluffy climbs above this
+// The world scrolls once the Fluffy climbs above this share of the stage
+// height (230px on the base 560 stage).
+const SCROLL_LINE = 0.41;
 const POOL_SIZE = 12;
 const TREAT_CHANCE = 0.18;
 const TREAT_POINTS = 25;
@@ -89,7 +95,20 @@ export default function CloudHop({ onGameComplete }) {
     }
   };
 
+  // Full-height stage; frozen during a run (a new height remounts Kaboom).
+  const { areaRef, height: stageHeight, pixelDensity, boxStyle } = useTallStage({
+    width: STAGE_WIDTH,
+    baseHeight: BASE_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    canResize: status === "idle",
+  });
+
   const setup = useCallback((k) => {
+    // Kaboom pins the canvas to W×H CSS px; let it follow the fitted box.
+    k.canvas.style.width = "100%";
+    k.canvas.style.height = "100%";
+    // A remount (new stage height) must wait for its own scene.
+    setAssetsReady(false);
     loadAssetCanvases(gameAssets.treats, { crop: true })
       .then((canvases) => {
         if (!k.canvas.isConnected) return;
@@ -99,10 +118,12 @@ export default function CloudHop({ onGameComplete }) {
       })
       .catch((err) => console.error("Cloud Hop: failed to load art", err));
 
+    const scrollLine = Math.round(stageHeight * SCROLL_LINE);
+
     function buildScene(canvases) {
       k.setGravity(GRAVITY);
       const state = { height: 0, treats: 0, dead: false, rng: Math.random, prevBottom: 0, stars: [] };
-      for (let i = 0; i < 40; i++) state.stars.push({ x: Math.random() * STAGE_WIDTH, y: Math.random() * STAGE_HEIGHT, r: Math.random() * 1.4 + 0.4 });
+      for (let i = 0; i < 40; i++) state.stars.push({ x: Math.random() * STAGE_WIDTH, y: Math.random() * stageHeight, r: Math.random() * 1.4 + 0.4 });
 
       // Sky shifts from day to sunset to a starry night as you climb.
       const SKY = [k.rgb("#eaf4fb"), k.rgb("#fde3cf"), k.rgb("#c9b8e8"), k.rgb("#2f3b6b")];
@@ -113,10 +134,10 @@ export default function CloudHop({ onGameComplete }) {
             const t = Math.min(SKY.length - 1.001, state.height / 2500);
             const i = Math.floor(t);
             const sky = SKY[i].lerp(SKY[i + 1], t - i);
-            k.drawRect({ pos: k.vec2(0, 0), width: STAGE_WIDTH, height: STAGE_HEIGHT, color: sky });
+            k.drawRect({ pos: k.vec2(0, 0), width: STAGE_WIDTH, height: stageHeight, color: sky });
             const night = Math.max(0, t - 1.8) / 1.2;
             if (night > 0) {
-              state.stars.forEach((s) => k.drawCircle({ pos: k.vec2(s.x, (s.y + state.height * 0.05) % STAGE_HEIGHT), radius: s.r, color: k.rgb(255, 255, 255), opacity: night }));
+              state.stars.forEach((s) => k.drawCircle({ pos: k.vec2(s.x, (s.y + state.height * 0.05) % stageHeight), radius: s.r, color: k.rgb(255, 255, 255), opacity: night }));
             }
           },
         },
@@ -154,7 +175,7 @@ export default function CloudHop({ onGameComplete }) {
       }
 
       const player = addFluffy(k, {
-        pos: k.vec2(STAGE_WIDTH / 2, STAGE_HEIGHT - 120),
+        pos: k.vec2(STAGE_WIDTH / 2, stageHeight - 120),
         comps: [k.area({ shape: new k.Rect(k.vec2(0), 22, 22) }), k.body({ jumpForce: JUMP_FORCE }), k.z(10), "player"],
       });
 
@@ -255,23 +276,23 @@ export default function CloudHop({ onGameComplete }) {
         });
 
         // Scroll the world instead of the camera once the Fluffy climbs high.
-        if (player.pos.y < SCROLL_LINE) {
-          const delta = SCROLL_LINE - player.pos.y;
-          player.pos.y = SCROLL_LINE;
+        if (player.pos.y < scrollLine) {
+          const delta = scrollLine - player.pos.y;
+          player.pos.y = scrollLine;
           state.prevBottom += delta;
           state.height += delta;
           clouds.forEach((c) => (c.pos.y += delta));
         }
         // Recycle clouds that dropped off the bottom (never destroyed).
         clouds.forEach((c) => {
-          if (c.pos.y > STAGE_HEIGHT + 30) {
+          if (c.pos.y > stageHeight + 30) {
             const spec = cloudSpec(state.height, state.rng);
             placeCloud(c, topCloudY() - spec.gap, spec);
           }
         });
         onProgressRef.current(state.height, state.treats);
 
-        if (player.pos.y > STAGE_HEIGHT + 40) die();
+        if (player.pos.y > stageHeight + 40) die();
       });
 
       apiRef.current = {
@@ -283,14 +304,14 @@ export default function CloudHop({ onGameComplete }) {
           k.destroyAll("particle");
           Object.assign(state, { height: 0, treats: 0, dead: false, rng });
           // A wide starter cloud right under the Fluffy, then a ladder upward.
-          placeCloud(clouds[0], STAGE_HEIGHT - 60, { x: STAGE_WIDTH / 2, w: 160, kind: "normal", treat: false });
-          let y = STAGE_HEIGHT - 60;
+          placeCloud(clouds[0], stageHeight - 60, { x: STAGE_WIDTH / 2, w: 160, kind: "normal", treat: false });
+          let y = stageHeight - 60;
           for (let i = 1; i < clouds.length; i++) {
             const spec = cloudSpec(0, rng);
             y -= spec.gap;
             placeCloud(clouds[i], y, spec);
           }
-          player.pos = k.vec2(STAGE_WIDTH / 2, STAGE_HEIGHT - 60 - 8 - R);
+          player.pos = k.vec2(STAGE_WIDTH / 2, stageHeight - 60 - 8 - R);
           player.vel = k.vec2(0, 0);
           state.prevBottom = player.pos.y + R;
           targetRef.current = null;
@@ -298,9 +319,15 @@ export default function CloudHop({ onGameComplete }) {
         },
       };
     }
-  }, []);
+  }, [stageHeight]);
 
-  const { containerRef, kRef } = useKaboomStage({ width: STAGE_WIDTH, height: STAGE_HEIGHT, background: "#eaf4fb", setup });
+  const { containerRef, kRef } = useKaboomStage({
+    width: STAGE_WIDTH,
+    height: stageHeight,
+    background: "#eaf4fb",
+    setup,
+    pixelDensity,
+  });
 
   useEffect(() => {
     if (kRef.current) kRef.current.debug.paused = status !== "playing";
@@ -390,8 +417,8 @@ export default function CloudHop({ onGameComplete }) {
         ) : null
       }
     >
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
-        <div className="relative aspect-[19/28] w-full max-w-[380px] overflow-hidden rounded-2xl">
+      <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
+        <div className="relative overflow-hidden framed:rounded-2xl" style={boxStyle}>
           <div ref={containerRef} className="touch-none-game absolute inset-0" {...pointer} />
           {status === "idle" && (
             <div className="bg-fluffy-cream/90 absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">

@@ -3,6 +3,7 @@ import { Heart } from "lucide-react";
 import GameShell from "@/games/components/GameShell";
 import GameResult from "@/games/components/GameResult";
 import { useKaboomStage } from "@/games/hooks/useKaboomStage";
+import { useTallStage } from "@/games/hooks/useTallStage";
 import { useGameTimer } from "@/games/hooks/useGameTimer";
 import { useHighScore } from "@/games/hooks/useHighScore";
 import { useGameResult } from "@/games/hooks/useGameResult";
@@ -10,7 +11,10 @@ import { formatTime } from "@/games/utils/format";
 import { gameAssets, loadAssetCanvases } from "@/games/assets/gameAssets";
 
 const STAGE_WIDTH = 380;
-const STAGE_HEIGHT = 560;
+// Width is fixed; the height stretches to the device (useTallStage), never
+// below 560 and capped so very tall screens stay playable.
+const BASE_HEIGHT = 560;
+const MAX_HEIGHT = 900;
 // Endless: no round timer. The run lasts until all lives are gone, and the
 // fall speed + spawn rate ramp up with elapsed time so it gets harder.
 const SPEED_RAMP_SECONDS = 30; // +100% fall speed every this many seconds...
@@ -100,7 +104,20 @@ export default function CatchTheItem({ onGameComplete }) {
   const handleMissRef = useRef(handleMiss);
   handleMissRef.current = handleMiss;
 
+  // Full-height stage; frozen during a run (a new height remounts Kaboom).
+  const { areaRef, height: stageHeight, pixelDensity, boxStyle } = useTallStage({
+    width: STAGE_WIDTH,
+    baseHeight: BASE_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    canResize: status === "idle",
+  });
+
   const setup = useCallback((k) => {
+    // Kaboom pins the canvas to W×H CSS px; let it follow the fitted box.
+    k.canvas.style.width = "100%";
+    k.canvas.style.height = "100%";
+    // A remount (new stage height) must wait for its own scene.
+    setAssetsReady(false);
     loadAssetCanvases(SPRITE_ASSETS, { crop: true })
       .then((canvases) => {
         // useKaboomStage detaches the canvas synchronously on unmount, so
@@ -126,7 +143,7 @@ export default function CatchTheItem({ onGameComplete }) {
 
       const basketSize = fit(canvases, "basket", BASKET_WIDTH);
       const basket = k.add([
-        k.pos(STAGE_WIDTH / 2, STAGE_HEIGHT - 8),
+        k.pos(STAGE_WIDTH / 2, stageHeight - 8),
         k.sprite("basket", basketSize),
         // Catch zone is the top ~45% (the opening), not the whole sprite.
         // Kaboom offsets a custom Rect area by the anchor using the area's own
@@ -139,7 +156,7 @@ export default function CatchTheItem({ onGameComplete }) {
         "basket",
       ]);
 
-      k.add([k.pos(0, STAGE_HEIGHT - 2), k.rect(STAGE_WIDTH, 6), k.area(), k.opacity(0), "floor"]);
+      k.add([k.pos(0, stageHeight - 2), k.rect(STAGE_WIDTH, 6), k.area(), k.opacity(0), "floor"]);
 
       k.onMouseMove((pos) => {
         pointerX.current = pos.x;
@@ -222,13 +239,14 @@ export default function CatchTheItem({ onGameComplete }) {
         k.wait(0.6, spawnItem);
       };
     }
-  }, []);
+  }, [stageHeight]);
 
   const { containerRef, kRef } = useKaboomStage({
     width: STAGE_WIDTH,
-    height: STAGE_HEIGHT,
+    height: stageHeight,
     background: "#eaf4fb",
     setup,
+    pixelDensity,
   });
 
   // Auto-pause the Kaboom loop for every non-playing state (idle preview,
@@ -284,8 +302,8 @@ export default function CatchTheItem({ onGameComplete }) {
         ) : null
       }
     >
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
-        <div className="relative aspect-[19/28] w-full max-w-[380px] overflow-hidden rounded-2xl">
+      <div ref={areaRef} className="absolute inset-0 flex items-center justify-center">
+        <div className="relative overflow-hidden framed:rounded-2xl" style={boxStyle}>
           <div ref={containerRef} className="absolute inset-0" />
 
           {status !== "idle" && (
