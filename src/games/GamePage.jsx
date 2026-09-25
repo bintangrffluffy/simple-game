@@ -1,7 +1,10 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { getGameById } from "@/games/config/games";
-import { emitGameComplete, onGameCompleteEvent } from "@/games/reward/gameEvents";
+import {
+  emitGameComplete,
+  onGameCompleteEvent,
+} from "@/games/reward/gameEvents";
 import { checkDailyChallenge } from "@/games/reward/dailyChallenge";
 import { evaluateAchievements } from "@/games/reward/achievements";
 import AchievementToast from "@/games/components/AchievementToast";
@@ -29,7 +32,7 @@ export default function GamePage() {
     [],
   );
 
-  if (!game) return <Navigate to="/games" replace />;
+  if (!game) return <Navigate to="/" replace />;
 
   function handleComplete(result) {
     emitGameComplete(result);
