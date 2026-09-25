@@ -19,8 +19,7 @@ export default function GameShell({
   return (
     <div className="bg-fluffy-cream flex min-h-[100dvh] items-start justify-center framed:items-center framed:px-4 framed:py-8">
       <div
-        className={`bg-fluffy-bg relative flex w-full ${maxWidth} flex-col overflow-hidden framed:rounded-3xl framed:shadow-xl`}
-        style={{ minHeight: "100dvh" }}
+        className={`bg-fluffy-bg relative flex min-h-[100dvh] w-full ${maxWidth} flex-col overflow-hidden framed:min-h-[calc(100dvh-4rem)] framed:rounded-3xl framed:shadow-xl`}
       >
         <GameHeader
           title={title}
@@ -39,8 +38,14 @@ export default function GameShell({
           {paused && !result && (
             <div className="bg-fluffy-text/40 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[2px]">
               <div className="bg-fluffy-bg rounded-2xl px-6 py-4 text-center shadow-xl">
-                <p className="font-poppins text-fluffy-text font-bold">Paused</p>
-                <button type="button" className="btn btn-primary mt-3" onClick={onPauseToggle}>
+                <p className="font-poppins text-fluffy-text font-bold">
+                  Paused
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary mt-3"
+                  onClick={onPauseToggle}
+                >
                   Resume
                 </button>
               </div>

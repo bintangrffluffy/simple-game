@@ -24,7 +24,8 @@ export function useKaboomStage({ width, height, background = "#eaf4fb", setup, p
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return undefined;
+    // A stage measured after first render passes no size until it knows one.
+    if (!container || !width || !height) return undefined;
 
     const canvas = document.createElement("canvas");
     canvas.className = "touch-none-game block h-full w-full";
